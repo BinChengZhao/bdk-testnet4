@@ -1,0 +1,11 @@
+[package]
+name = "bdk-testnet4"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bdk_wallet = { git = "https://github.com/bitcoindevkit/bdk.git", tag = "v1.0.0-alpha.13" , features = ["keys-bip39"]}
+bdk_esplora = { git = "https://github.com/bitcoindevkit/bdk.git", tag = "v1.0.0-alpha.13" , features = ["blocking"] }
+clap = {version = "4.5.7", features = ["derive"]}
+anyhow = "1.0.86"
+bitcoin = { version = "0.32.0"}
