@@ -22,7 +22,6 @@ $ ./target/debug/bdk-testnet4 create-descriptor
 
 "#
 )]
-#[clap(version = "1.0", author = "AtlasGraph Authors")]
 pub struct Wallet {
     #[clap(
         short,
@@ -46,6 +45,7 @@ pub struct Wallet {
 // 3. Get balance, get wallet balance
 // 4. List transaction, list all transactions
 // 5. Send transaction, send bitcoin to receiver address
+// 6. Restore wallet, restore wallet from seed mnemonic words
 // defalut subcommand is InitWallet
 #[derive(Subcommand, Debug, Clone)]
 pub enum Commands {
@@ -53,10 +53,20 @@ pub enum Commands {
     CreateAddress,
     GetBalance,
     ListTransactions,
+    /// Represents a payment command.
+    /// It contains the receiver's address and the amount to send.
     Pay {
+        /// Receiver address
         #[clap(short, long, help = "Receiver address")]
         receiver: String,
+        /// Amount to send
         #[clap(short, long, help = "Amount to send")]
         amount: u64,
+    },
+    /// Restore a master extended key from seed backup mnemonic words.
+    RestoreKey {
+        /// Seed mnemonic words, must be quoted (eg. "word1 word2 ...").
+        #[clap(name = "MNEMONIC", short = 'm', long = "mnemonic")]
+        mnemonic: String,
     },
 }

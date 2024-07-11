@@ -2,7 +2,12 @@ use std::{collections::BTreeSet, io::Write, str::FromStr};
 
 use anyhow::Result;
 use bdk_esplora::EsploraExt;
+use bdk_wallet::keys::bip39::{Language, Mnemonic};
+use bdk_wallet::keys::{DerivableKey, DescriptorKey, ExtendedKey};
+use bdk_wallet::miniscript::Segwitv0;
 use bdk_wallet::{miniscript, wallet::Wallet, KeychainKind, SignOptions};
+use bitcoin::bip32::{DerivationPath, KeySource};
+use bitcoin::key::Secp256k1;
 use bitcoin::{Address, Amount, BlockHash, Network};
 use clap::Parser;
 
@@ -48,6 +53,10 @@ impl Testnet4Wallet {
                 println!("Send transaction \r\n");
                 self.pay(receiver, *amount)?;
             }
+            Commands::RestoreKey { mnemonic } => {
+                println!("Restore a master extended key \r\n");
+                self.restore_key(mnemonic)?;
+            }
         };
         Ok(())
     }
@@ -62,8 +71,8 @@ impl Testnet4Wallet {
         let int_private_key = bitcoin::key::PrivateKey::generate(Network::Testnet);
         let ext_private_key = bitcoin::key::PrivateKey::generate(Network::Testnet);
 
-        let int_priv_descriptor = format!("wpkh({})", int_private_key.to_string());
-        let ext_priv_descriptor = format!("wpkh({})", ext_private_key.to_string());
+        let int_priv_descriptor = format!("wpkh({})", int_private_key);
+        let ext_priv_descriptor = format!("wpkh({})", ext_private_key);
 
         let (int_pub_descriptor, ..) = bdk_wallet::descriptor!(wpkh(int_private_key))?;
         let (ext_pub_descriptor, ..) = bdk_wallet::descriptor!(wpkh(ext_private_key))?;
@@ -139,7 +148,7 @@ impl Testnet4Wallet {
     /// # Returns
     ///
     /// Returns `Ok(())` if the transaction is successfully sent, otherwise returns an error.
-    fn pay(&self, receiver: &String, amount: u64) -> Result<()> {
+    fn pay(&self, receiver: &str, amount: u64) -> Result<()> {
         let mut wallet = self.wallet()?;
         let balance = wallet.balance();
         let amount = Amount::from_sat(amount);
@@ -169,6 +178,58 @@ impl Testnet4Wallet {
         // broadcast the transaction
         self.client()?.broadcast(&tx)?;
         println!("\r\n Transaction sent: {:?} \r\n", tx.compute_txid());
+        Ok(())
+    }
+
+    /// Restores a key from a mnemonic phrase.
+    ///
+    /// # Arguments
+    ///
+    /// * `mnemonic` - A `String` containing the mnemonic phrase.
+    ///
+    /// # Returns
+    ///
+    /// This function returns `Ok(())` if the key was successfully restored,
+    /// otherwise it returns an error. It also prints the fingerprint of the restored key.
+    fn restore_key(&self, mnemonic: &String) -> Result<()> {
+        let secp = Secp256k1::new();
+        let path = DerivationPath::from_str("m/86h/1h/0h").expect("must be valid path");
+
+        let mnemonic =
+            Mnemonic::parse_in(Language::English, mnemonic).expect("must be valid mnemonic");
+
+        let xkey: ExtendedKey = mnemonic.into_extended_key()?;
+        let xprv = xkey
+            .into_xprv(Network::Testnet)
+            .expect("must be valid xprv");
+        let fingerprint = xprv.fingerprint(&secp);
+
+        let derived_xprv = &xprv.derive_priv(&secp, &path)?;
+        let origin: KeySource = (xprv.fingerprint(&secp), path.clone());
+        let derived_xprv_desc_key: DescriptorKey<Segwitv0> =
+            derived_xprv.into_descriptor_key(Some(origin), DerivationPath::default())?;
+        let bitcoin_descriptor = format!("tr({}/86'/1'/0'/0/0)", xprv);
+
+        if let DescriptorKey::Secret(desc_seckey, networks, _) = derived_xprv_desc_key {
+            let desc_pubkey = desc_seckey
+                .to_public(&secp)
+                .expect("must be valid public key");
+            let fixed_xpub = desc_pubkey.to_string().replace("*", "<0;1;9;10>/*");
+
+            // print xprv、fingerprint、path、derived_xprv、desc_seckey、desc_pubkey、networks
+            println!("xprv: {} \r\n", xprv);
+            println!("fingerprint: {} \r\n", fingerprint);
+            println!("path: {} \r\n", path);
+            println!("derived_xprv: {} \r\n", derived_xprv);
+            println!("desc_seckey: {} \r\n", desc_seckey);
+            println!("desc_pubkey: {} \r\n", desc_pubkey);
+            println!("Fixed XPUB: {} \r\n", fixed_xpub);
+            println!("networks: {:?} \r\n", networks);
+            println!("bitcoin_descriptor: {} \r\n", bitcoin_descriptor);
+        } else {
+            anyhow::bail!("Invalid key variant");
+        }
+
         Ok(())
     }
 
